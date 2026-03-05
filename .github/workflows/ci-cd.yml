@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: hatchloom-user-service
 
 jobs:
   # Job 1: Test on every push (all branches)
