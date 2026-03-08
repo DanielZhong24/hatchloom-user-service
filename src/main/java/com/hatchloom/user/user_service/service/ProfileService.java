@@ -29,16 +29,20 @@ public class ProfileService {
 
     public ProfileDTO getProfile(String token, UUID userId) {
         try {
+            if (token == null || token.isEmpty()) {
+                log.warn("Null or empty token provided for profile access");
+                return null;
+            }
+
             User requestingUser = sessionManager.getUserFromSessionToken(token);
 
             if (requestingUser == null) {
-                log.warn("Unauthorized profile access attempt");
+                log.warn("Unauthorized profile access attempt - invalid token or user not found");
                 return null;
             }
 
             // Check authorization: user can only view their own profile unless admin
-            if (!requestingUser.getId().equals(userId) &&
-                !isAdmin(requestingUser.getRole())) {
+            if (!requestingUser.getId().equals(userId) && !isAdmin(requestingUser.getRole())) {
                 log.warn("Unauthorized profile access by user: {} for user: {}",
                         requestingUser.getId(), userId);
                 return null;
@@ -84,6 +88,7 @@ public class ProfileService {
             UserProfile profile = user.getProfile();
 
             if (profile != null) {
+                // Update common fields
                 if (request.getBio() != null) {
                     profile.setBio(request.getBio());
                 }
@@ -94,27 +99,9 @@ public class ProfileService {
                     profile.setProfilePictureUrl(request.getProfilePictureUrl());
                 }
 
-                // Update profile-specific fields
-                if (profile instanceof AcademicProfile) {
-                    AcademicProfile academicProfile = (AcademicProfile) profile;
-                    if (request.getGradeLevel() != null) {
-                        academicProfile.setGradeLevel(request.getGradeLevel());
-                    }
-                    if (request.getSpecialization() != null) {
-                        academicProfile.setSpecialization(request.getSpecialization());
-                    }
-                } else if (profile instanceof ProfessionalProfile) {
-                    ProfessionalProfile professionalProfile = (ProfessionalProfile) profile;
-                    if (request.getCompanyName() != null) {
-                        professionalProfile.setCompanyName(request.getCompanyName());
-                    }
-                    if (request.getJobTitle() != null) {
-                        professionalProfile.setJobTitle(request.getJobTitle());
-                    }
-                    if (request.getExpertise() != null) {
-                        professionalProfile.setExpertise(request.getExpertise());
-                    }
-                }
+                // Polymorphic update: each profile type handles its own fields
+                // Pass user so profile can determine Student vs Teacher type
+                profile.applyUpdates(request, user);
 
                 userProfileRepository.save(profile);
                 log.info("Profile updated for user: {}", userId);
@@ -156,8 +143,8 @@ public class ProfileService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole().toString())
-                .createdAt(user.getCreatedAt().toString())
-                .updatedAt(user.getUpdatedAt().toString());
+                .createdAt(user.getCreatedAt() == null ? null : user.getCreatedAt().toString())
+                .updatedAt(user.getUpdatedAt() == null ? null : user.getUpdatedAt().toString());
 
         if (user.getProfile() != null) {
             UserProfile profile = user.getProfile();
@@ -165,16 +152,9 @@ public class ProfileService {
                    .description(profile.getDescription())
                    .profilePictureUrl(profile.getProfilePictureUrl());
 
-            if (profile instanceof AcademicProfile) {
-                AcademicProfile academicProfile = (AcademicProfile) profile;
-                builder.gradeLevel(academicProfile.getGradeLevel())
-                       .specialization(academicProfile.getSpecialization());
-            } else if (profile instanceof ProfessionalProfile) {
-                ProfessionalProfile professionalProfile = (ProfessionalProfile) profile;
-                builder.companyName(professionalProfile.getCompanyName())
-                       .jobTitle(professionalProfile.getJobTitle())
-                       .expertise(professionalProfile.getExpertise());
-            }
+            // Polymorphic enrichment: each profile type adds its own fields
+            // Pass user so profile can determine Student vs Teacher without relying on bidirectional relationship
+            profile.enrichProfileDTO(builder, user);
         }
 
         return builder.build();

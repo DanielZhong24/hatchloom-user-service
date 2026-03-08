@@ -101,6 +101,14 @@ public class JwtTokenProvider {
     }
 
     private Claims getClaimsFromToken(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Token cannot be null or empty");
+        }
+
+        if (token.startsWith("Bearer ")) {
+            throw new IllegalArgumentException("Token contains 'Bearer ' prefix - should be extracted first");
+        }
+
         return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()

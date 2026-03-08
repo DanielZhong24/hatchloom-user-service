@@ -27,7 +27,16 @@ public class ProfileController {
             @PathVariable String userId) {
 
         log.info("Get profile request for user: {}", userId);
+        log.debug("Authorization header received: {}", authHeader != null ? "Present (length: " + authHeader.length() + ")" : "Missing");
+
         String token = extractTokenFromHeader(authHeader);
+        log.debug("Extracted token: {}", token != null ? "Present (length: " + token.length() + ")" : "Missing");
+
+        if (token == null) {
+            log.warn("No token provided in Authorization header");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         ProfileDTO profile = profileService.getProfile(token, UUID.fromString(userId));
 
         if (profile != null) {

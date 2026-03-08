@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ProfileDTO {
     private String userId;
     private String username;
@@ -19,12 +18,35 @@ public class ProfileDTO {
     private String bio;
     private String description;
     private String profilePictureUrl;
-    private String gradeLevel;     // For academic profiles
-    private String specialization; // For academic profiles
-    private String companyName;    // For professional profiles
-    private String jobTitle;       // For professional profiles
-    private String expertise;      // For professional profiles
+
+    // Academic profile fields (students and teachers)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String gradeLevel;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String specialization;
+
+    // Student-specific metrics (only for STUDENT role)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String lastActive;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer skillsCertified;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer explorerLevelXp;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer currentStreak;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer activeVentures;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer problemsTackled;
+
+    // Professional profile fields (admins, parents)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String companyName;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String jobTitle;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String expertise;
+
     private String createdAt;
     private String updatedAt;
 }
-

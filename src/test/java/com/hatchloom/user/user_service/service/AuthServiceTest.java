@@ -4,12 +4,13 @@ import com.hatchloom.user.user_service.dto.LoginRequest;
 import com.hatchloom.user.user_service.dto.LoginResponse;
 import com.hatchloom.user.user_service.dto.RegisterRequest;
 import com.hatchloom.user.user_service.dto.RegisterResponse;
+import com.hatchloom.user.user_service.model.AcademicProfile;
 import com.hatchloom.user.user_service.model.Parent;
 import com.hatchloom.user.user_service.model.RoleType;
 import com.hatchloom.user.user_service.model.Student;
-import com.hatchloom.user.user_service.model.User;
 import com.hatchloom.user.user_service.repository.ParentRepository;
 import com.hatchloom.user.user_service.repository.StudentRepository;
+import com.hatchloom.user.user_service.repository.UserProfileRepository;
 import com.hatchloom.user.user_service.repository.UserRepository;
 import com.hatchloom.user.user_service.security.SessionManager;
 import com.hatchloom.user.user_service.strategy.StrategyFactory;
@@ -19,7 +20,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -42,10 +42,13 @@ class AuthServiceTest {
     private ParentRepository parentRepository;
 
     @Mock
+    private UserProfileRepository userProfileRepository;
+
+    @Mock
     private SessionManager sessionManager;
 
     @Mock
-    private PasswordEncoder passwordEncoder;
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Mock
     private StrategyFactory strategyFactory;
@@ -194,6 +197,43 @@ class AuthServiceTest {
         assertEquals(testUsername, response.getUsername());
         assertEquals("Login successful", response.getMessage());
         verify(userRepository, times(1)).findByUsername(testUsername);
+        verify(userProfileRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Student login updates lastActive on academic profile")
+    void testStudentLoginUpdatesLastActive() {
+        // Arrange
+        AcademicProfile profile = new AcademicProfile();
+        Student user = new Student();
+        user.setId(testUserId);
+        user.setUsername(testUsername);
+        user.setEmail(testEmail);
+        user.setPasswordHash("hashed_password");
+        user.setRole(RoleType.STUDENT);
+        user.setActive(true);
+        profile.setUser(user);
+        user.setProfile(profile);
+
+        LoginRequest request = new LoginRequest(testUsername, "TestPassword123");
+
+        when(userRepository.findByUsername(testUsername)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("TestPassword123", "hashed_password")).thenReturn(true);
+        when(userProfileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(sessionManager.generateSessionTokens(any(), anyString(), anyString()))
+                .thenReturn(new com.hatchloom.user.user_service.security.SessionToken(
+                        "access_token_jwt",
+                        "refresh_token_jwt"
+                ));
+
+        // Act
+        LoginResponse response = authService.login(request);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("Login successful", response.getMessage());
+        assertNotNull(profile.getLastActive());
+        verify(userProfileRepository, times(1)).save(profile);
     }
 
     @Test

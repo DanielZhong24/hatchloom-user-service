@@ -49,11 +49,21 @@ public class SessionManager {
     }
 
     public User getUserFromSessionToken(String token) {
-        UUID userId = getUserIdFromSessionToken(token);
-        if (userId != null) {
-            return userRepository.findById(userId).orElse(null);
+        if (token == null || token.isEmpty()) {
+            log.warn("Null or empty token provided to getUserFromSessionToken");
+            return null;
         }
-        return null;
+
+        try {
+            UUID userId = getUserIdFromSessionToken(token);
+            if (userId != null) {
+                return userRepository.findById(userId).orElse(null);
+            }
+            return null;
+        } catch (Exception e) {
+            log.error("Error extracting user from token", e);
+            return null;
+        }
     }
 
     public SessionToken refreshAccessToken(String refreshToken) {
