@@ -1,0 +1,97 @@
+﻿@startuml User_Responsibility_Strategy
+left to right direction
+skinparam classAttributeIconSize 0
+
+enum RoleType {
+      STUDENT
+      SCHOOL_TEACHER
+      SCHOOL_ADMIN
+      HATCHLOOM_TEACHER
+      HATCHLOOM_ADMIN
+      PARENT
+  }
+
+  interface IRolePermissionStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class StrategyFactory {
+      - strategyMap: Map<RoleType, IRolePermissionStrategy>
+      + StrategyFactory(strategies: List<IRolePermissionStrategy>)
+      + getStrategy(roleType: RoleType): IRolePermissionStrategy
+  }
+
+  class StudentStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class ParentStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class SchoolTeacherStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class SchoolAdminStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class HatchloomTeacherStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+  class HatchloomAdminStrategy {
+      + getRoleType(): RoleType
+      + getPermissions(): Set<String>
+      + getScope(): String
+  }
+
+class AuthService {
+    - strategyFactory: StrategyFactory
+    + getRolePermissions(token: String): RolePermissionDTO
+}
+
+class SessionManager {
+    + getRoleFromSessionToken(token: String): String
+}
+
+AuthService --> SessionManager : extract role from token
+AuthService --> StrategyFactory : resolve strategy
+StrategyFactory --> IRolePermissionStrategy : lookup by RoleType
+
+IRolePermissionStrategy <|.. StudentStrategy
+IRolePermissionStrategy <|.. ParentStrategy
+IRolePermissionStrategy <|.. SchoolTeacherStrategy
+IRolePermissionStrategy <|.. SchoolAdminStrategy
+IRolePermissionStrategy <|.. HatchloomTeacherStrategy
+IRolePermissionStrategy <|.. HatchloomAdminStrategy
+
+RoleType <-- StudentStrategy
+RoleType <-- ParentStrategy
+RoleType <-- SchoolTeacherStrategy
+RoleType <-- SchoolAdminStrategy
+RoleType <-- HatchloomTeacherStrategy
+RoleType <-- HatchloomAdminStrategy
+
+note bottom of StrategyFactory
+  Runtime sequence (permissions endpoint):
+  1) AuthService extracts role from SessionManager
+  2) role string -> RoleType
+  3) StrategyFactory returns concrete strategy
+  4) AuthService returns permissions + scope
+end note
+
+@enduml

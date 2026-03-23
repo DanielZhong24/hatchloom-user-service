@@ -1,0 +1,172 @@
+@startuml User_Authentication_Sequence
+
+participant User as user
+participant AuthController as ctrl
+participant AuthService as svc
+participant UserRepository as repo
+participant SessionManager as sessionMgr
+participant JwtTokenProvider as jwtProv
+participant Database as db
+
+== Registration Flow ==
+
+user -> ctrl: POST /auth/register\n(username, email, password, role)
+activate ctrl
+ctrl -> svc: register(RegisterRequest)
+activate svc
+
+svc -> repo: existsByEmail(email)
+activate repo
+repo -> db: SELECT * FROM app_users\nWHERE email = ?
+db -> repo: check result
+deactivate repo
+
+alt Email exists
+    svc -> svc: return error
+else Email available
+    svc -> svc: createUserByRole(roleType, request)
+    svc -> svc: passwordEncoder.encode(password)
+    svc -> repo: save(user)
+    activate repo
+    repo -> db: INSERT INTO app_users
+    db -> repo: user with id
+    deactivate repo
+
+    svc -> svc: createDefaultProfileForUser(user)
+    svc -> repo: save(profile)
+    activate repo
+    repo -> db: INSERT INTO user_profiles
+    db -> repo: profile saved
+    deactivate repo
+end
+
+svc -> ctrl: RegisterResponse(userId, username, role)
+deactivate svc
+ctrl -> user: 201 Created\n{userId, username, role}
+deactivate ctrl
+
+== Login Flow ==
+
+user -> ctrl: POST /auth/login\n(username, password)
+activate ctrl
+ctrl -> svc: login(LoginRequest)
+activate svc
+
+svc -> repo: findByUsername(username)
+activate repo
+repo -> db: SELECT * FROM app_users\nWHERE username = ?
+db -> repo: user
+deactivate repo
+
+alt User not found or inactive
+    svc -> svc: return error
+else User found
+    svc -> svc: passwordEncoder.matches(password, hash)
+
+    alt Password mismatch
+        svc -> svc: return error
+    else Password matches
+        svc -> sessionMgr: generateSessionTokens(userId, username, role)
+        activate sessionMgr
+
+        sessionMgr -> jwtProv: generateAccessToken(userId, username, role)
+        activate jwtProv
+        jwtProv -> jwtProv: createToken(claims, subject, expiry)
+        jwtProv -> sessionMgr: accessToken (JWT)
+        deactivate jwtProv
+
+        sessionMgr -> jwtProv: generateRefreshToken(userId, username)
+        activate jwtProv
+        jwtProv -> jwtProv: createToken(claims, subject, expiry)
+        jwtProv -> sessionMgr: refreshToken (JWT)
+        deactivate jwtProv
+
+        sessionMgr -> svc: SessionToken{accessToken, refreshToken}
+        deactivate sessionMgr
+
+        svc -> svc: record login event
+    end
+end
+
+svc -> ctrl: LoginResponse(accessToken, refreshToken, role, username)
+deactivate svc
+ctrl -> user: 200 OK\n{accessToken, refreshToken, role, username}
+deactivate ctrl
+
+== Token Refresh Flow ==
+
+user -> ctrl: POST /auth/refresh\n(refreshToken)
+activate ctrl
+ctrl -> svc: refreshAccessToken(RefreshTokenRequest)
+activate svc
+
+svc -> sessionMgr: refreshAccessToken(refreshToken)
+activate sessionMgr
+
+sessionMgr -> jwtProv: validateToken(refreshToken)
+activate jwtProv
+jwtProv -> jwtProv: parseSignedClaims(refreshToken)
+jwtProv -> sessionMgr: true (valid) or false
+deactivate jwtProv
+
+alt Invalid or expired refresh token
+    sessionMgr -> svc: null
+    svc -> svc: return error
+else Valid refresh token
+    sessionMgr -> sessionMgr: UUID userId = getUserIdFromSessionToken(refreshToken)
+    sessionMgr -> repo: findById(userId)
+    activate repo
+    repo -> db: SELECT * FROM app_users WHERE id = ?
+    db -> repo: user
+    deactivate repo
+
+    sessionMgr -> sessionMgr: generateSessionTokens(userId, user.username, user.role)
+    sessionMgr -> jwtProv: generateAccessToken(...)
+    sessionMgr -> jwtProv: generateRefreshToken(...)
+
+    sessionMgr -> svc: new SessionToken{accessToken, refreshToken}
+    deactivate sessionMgr
+end
+
+svc -> ctrl: LoginResponse(accessToken, refreshToken, role, username)
+deactivate svc
+ctrl -> user: 200 OK or 401 Unauthorized
+deactivate ctrl
+
+== Token Validation Flow ==
+
+user -> ctrl: GET /auth/validate\n(Authorization: Bearer token)
+activate ctrl
+ctrl -> svc: validateSessionToken(token)
+activate svc
+
+svc -> sessionMgr: validateSessionToken(token)
+activate sessionMgr
+
+sessionMgr -> jwtProv: validateToken(token)
+activate jwtProv
+jwtProv -> jwtProv: parseSignedClaims(token)
+alt Valid signature and not expired
+    jwtProv -> sessionMgr: true
+else Invalid signature or expired
+    jwtProv -> sessionMgr: false
+end
+deactivate jwtProv
+
+alt Token invalid
+    sessionMgr -> svc: false
+    svc -> svc: return invalid
+else Token valid
+    sessionMgr -> sessionMgr: UUID userId = getUserIdFromToken(token)
+    sessionMgr -> sessionMgr: String role = getRoleFromToken(token)
+    sessionMgr -> svc: SessionValidationResponse{valid, userId, role}
+    deactivate sessionMgr
+end
+
+svc -> ctrl: SessionValidationResponse
+deactivate svc
+ctrl -> user: 200 OK or 401 Unauthorized
+deactivate ctrl
+
+@enduml
+

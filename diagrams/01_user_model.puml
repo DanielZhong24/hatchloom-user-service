@@ -1,0 +1,125 @@
+@startuml User_Types_And_Profiles
+left to right direction
+skinparam classAttributeIconSize 0
+
+enum RoleType {
+      STUDENT
+      SCHOOL_TEACHER
+      SCHOOL_ADMIN
+      HATCHLOOM_TEACHER
+      HATCHLOOM_ADMIN
+      PARENT
+  }
+
+  abstract class User {
+      - id: UUID
+      - username: String
+      - email: String
+      - passwordHash: String
+      - role: RoleType
+      - createdAt: LocalDateTime
+      - updatedAt: LocalDateTime
+      - active: Boolean
+      - profile: UserProfile
+      - strategy: IRolePermissionStrategy
+      - onCreate(): void
+      - onUpdate(): void
+      {abstract} + getDisplayName(): String
+  }
+
+  class Student {
+      - schoolId: UUID
+      - age: Integer
+      - parent: Parent
+      + getDisplayName(): String
+  }
+
+  class Parent {
+      - linkedChildren: List<Student>
+      + getDisplayName(): String
+  }
+
+  class SchoolTeacher {
+      - schoolId: UUID
+      + getDisplayName(): String
+  }
+
+  class SchoolAdmin {
+      - schoolId: UUID
+      + getDisplayName(): String
+  }
+
+  class HatchloomTeacher {
+      + getDisplayName(): String
+  }
+
+  class HatchloomAdmin {
+      + getDisplayName(): String
+  }
+
+  abstract class UserProfile {
+      - id: UUID
+      - user: User
+      - bio: String
+      - description: String
+      - profilePictureUrl: String
+      - createdAt: LocalDateTime
+      - updatedAt: LocalDateTime
+      - onCreate(): void
+      - onUpdate(): void
+      {abstract} + getProfileType(): String
+      {abstract} + enrichProfileDTO(builder: ProfileDTOBuilder, user: User): void
+      {abstract} + applyUpdates(request: UpdateProfileRequest, user: User): void
+      + onUserLogin(user: User): void
+      + initializeDefaults(user: User): void
+      + getExtendedFields(): Map<String, Object>
+  }
+
+  class AcademicProfile {
+      - gradeLevel: String
+      - specialization: String
+      - lastActive: LocalDateTime
+      - skillsCertified: Integer
+      - explorerLevelXp: Integer
+      - currentStreak: Integer
+      - activeVentures: Integer
+      - problemsTackled: Integer
+      + getProfileType(): String
+      + enrichProfileDTO(builder: ProfileDTOBuilder, user: User): void
+      + applyUpdates(request: UpdateProfileRequest, user: User): void
+      + onUserLogin(user: User): void
+  }
+
+  class ProfessionalProfile {
+      - companyName: String
+      - jobTitle: String
+      - expertise: String
+      + getProfileType(): String
+      + enrichProfileDTO(builder: ProfileDTOBuilder, user: User): void
+      + applyUpdates(request: UpdateProfileRequest, user: User): void
+      + initializeDefaults(user: User): void
+      + getExtendedFields(): Map<String, Object>
+  }
+
+
+User <|-- Student
+User <|-- Parent
+User <|-- SchoolTeacher
+User <|-- SchoolAdmin
+User <|-- HatchloomTeacher
+User <|-- HatchloomAdmin
+UserProfile <|-- AcademicProfile
+UserProfile <|-- ProfessionalProfile
+
+User "1" *-- "0..1" UserProfile : owns profile
+Student "0..*" --> "0..1" Parent : linked parent
+User "*" --> "1" RoleType : role
+
+note bottom of UserProfile
+  Polymorphic design decision:
+  profile-specific update/enrichment logic stays in concrete profiles,
+  so ProfileService avoids instanceof chains.
+end note
+
+@enduml
+

@@ -1,0 +1,82 @@
+﻿@startuml Session_Manager_Singleton
+left to right direction
+skinparam classAttributeIconSize 0
+
+class SessionManager <<Singleton>> {
+      {static} - instance: SessionManager
+      - jwtTokenProvider: JwtTokenProvider
+      - userRepository: UserRepository
+      + SessionManager(jwtTokenProvider: JwtTokenProvider, userRepository: UserRepository)
+      {static} + getInstance(): SessionManager
+      + generateSessionTokens(userId: UUID, username: String, role: String): SessionToken
+      + validateSessionToken(token: String): boolean
+      + getUserIdFromSessionToken(token: String): UUID
+      + getRoleFromSessionToken(token: String): String
+      + getUserFromSessionToken(token: String): User
+      + refreshAccessToken(refreshToken: String): SessionToken
+  }
+
+  class JwtTokenProvider {
+      - jwtSecret: String
+      - accessTokenExpiryMinutes: int
+      - refreshTokenExpiryDays: int
+      - getSigningKey(): SecretKey
+      + generateAccessToken(userId: UUID, username: String, role: String): String
+      + generateRefreshToken(userId: UUID, username: String): String
+      - createToken(claims: Map<String, Object>, subject: String, expiryMillis: long): String
+      + getUserIdFromToken(token: String): UUID
+      + getRoleFromToken(token: String): String
+      + getTokenTypeFromToken(token: String): String
+      + validateToken(token: String): boolean
+      - getClaimsFromToken(token: String): Claims
+      - getAccessTokenExpiry(): long
+      - getRefreshTokenExpiry(): long
+  }
+
+  class SessionToken {
+      - accessToken: String
+      - refreshToken: String
+  }
+
+class JwtAuthenticationFilter {
+      {static} - BEARER_PREFIX: String
+      - sessionManager: SessionManager
+      + doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain): void
+      - extractTokenFromRequest(request: HttpServletRequest): String
+  }
+
+
+class AuthService {
+    - sessionManager: SessionManager
+    + login(request: LoginRequest): LoginResponse
+    + refreshAccessToken(request: RefreshTokenRequest): LoginResponse
+    + validateSessionToken(token: String): SessionValidationResponse
+}
+
+interface UserRepository {
+    + findById(id: UUID): Optional<User>
+}
+
+abstract class User {
+    - id: UUID
+    - username: String
+    - role: RoleType
+}
+
+AuthService --> SessionManager : token lifecycle
+JwtAuthenticationFilter --> SessionManager : request authentication
+SessionManager --> JwtTokenProvider : create/validate JWT
+SessionManager --> UserRepository : resolve user
+SessionManager --> SessionToken : returns
+UserRepository ..> User
+
+note bottom of SessionManager
+  Happy-path interaction flow:
+  1) AuthService.login() -> generateSessionTokens()
+  2) SessionManager -> JwtTokenProvider (access + refresh token)
+  3) AuthService.refreshAccessToken() -> refreshAccessToken()
+  4) SessionManager validates refresh token and reloads User
+  5) SessionManager issues new SessionToken pair
+end note
+
+@enduml

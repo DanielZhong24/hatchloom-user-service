@@ -1,0 +1,121 @@
+@startuml System_Component_Architecture
+!define COMP_COLOR #E1F5FE
+!define SERVICE_COLOR #FFF9C4
+!define DATA_COLOR #F3E5F5
+!define SECURITY_COLOR #FCE4EC
+
+package "API Layer" {
+  component "AuthController" as AuthCtrl
+  component "ProfileController" as ProfileCtrl
+}
+
+package "Service Layer" {
+  component "AuthService" as AuthSvc <<service>>
+  component "ProfileService" as ProfileSvc <<service>>
+}
+
+package "Security Component" {
+  component "SessionManager" as SessionMgr <<security>>
+  component "JwtTokenProvider" as JwtProvider <<security>>
+  component "JwtAuthenticationFilter" as JwtFilter <<security>>
+}
+
+package "Domain Model" {
+  component "User Hierarchy" as UserModel <<model>>
+  component "UserProfile Hierarchy" as ProfileModel <<model>>
+  component "RoleType Enum" as RoleType <<model>>
+}
+
+package "Authorization" {
+  component "StrategyFactory" as StratFactory <<authorization>>
+  component "IRolePermissionStrategy" as RoleStrategy <<authorization>>
+  component "Role Strategies" as Strategies <<authorization>>
+}
+
+package "Data Persistence" {
+  component "UserRepository" as UserRepo <<repository>>
+  component "UserProfileRepository" as ProfileRepo <<repository>>
+  component "StudentRepository" as StudentRepo <<repository>>
+  component "ParentRepository" as ParentRepo <<repository>>
+}
+
+package "Exception Handling" {
+  component "GlobalExceptionHandler" as ExceptionHandler <<handler>>
+}
+
+database "PostgreSQL Database" as DB {
+  component "app_users table" as UsersTable
+  component "user_profiles table" as ProfilesTable
+  component "User Type Tables" as UserTypeTables
+  component "Profile Type Tables" as ProfileTypeTables
+}
+
+' API to Service
+AuthCtrl --> AuthSvc : register, login, refresh
+ProfileCtrl --> ProfileSvc : getProfile, updateProfile
+
+' Service to Security
+AuthSvc --> SessionMgr : generateSessionTokens\nvalidateSessionToken
+ProfileSvc --> SessionMgr : getUserFromSessionToken
+
+' Service to Authorization
+AuthSvc --> StratFactory : getStrategy
+StratFactory --> RoleStrategy : lookup strategy
+RoleStrategy --> Strategies
+
+' Service to Domain
+AuthSvc --> UserModel : create/validate User
+ProfileSvc --> ProfileModel : getProfile/updateProfile
+AuthSvc --> RoleType : getRoleType
+
+' Service to Data
+AuthSvc --> UserRepo : save/find User
+AuthSvc --> StudentRepo : find Student
+AuthSvc --> ParentRepo : find Parent
+ProfileSvc --> UserRepo : findById
+ProfileSvc --> ProfileRepo : save/find Profile
+
+' Security to Data
+SessionMgr --> UserRepo : findById for token validation
+JwtFilter --> SessionMgr : validateToken
+
+' Exception Handling
+AuthSvc -.-> ExceptionHandler : throw exceptions
+ProfileSvc -.-> ExceptionHandler : throw exceptions
+
+' Data to Database
+UserRepo --> DB : JDBC queries
+StudentRepo --> DB
+ParentRepo --> DB
+ProfileRepo --> DB
+
+note right of AuthCtrl
+  REST endpoints:
+  POST /auth/register
+  POST /auth/login
+  POST /auth/refresh
+  GET /auth/validate
+  GET /auth/permissions
+end note
+
+note right of ProfileCtrl
+  REST endpoints:
+  GET /profile/{userId}
+  PUT /profile/{userId}
+  GET /profile
+end note
+
+note right of SessionMgr
+  Singleton managing
+  token generation
+  and validation
+end note
+
+note right of StratFactory
+  Maps RoleType to
+  IRolePermissionStrategy
+  implementations
+end note
+
+@enduml
+

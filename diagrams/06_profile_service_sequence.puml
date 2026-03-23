@@ -1,0 +1,193 @@
+@startuml Profile_Service_Sequence
+
+participant User as user
+participant ProfileController as ctrl
+participant ProfileService as svc
+participant SessionManager as sessionMgr
+participant UserRepository as userRepo
+participant UserProfileRepository as profileRepo
+participant UserProfile as profile
+participant Database as db
+
+== Get Profile Flow ==
+
+user -> ctrl: GET /profile/{userId}\n(Authorization: Bearer token)
+activate ctrl
+
+ctrl -> svc: getProfile(token, userId)
+activate svc
+
+svc -> sessionMgr: getUserFromSessionToken(token)
+activate sessionMgr
+
+sessionMgr -> sessionMgr: validate token
+sessionMgr -> userRepo: findById(userId from token)
+activate userRepo
+userRepo -> db: SELECT * FROM app_users WHERE id = ?
+db -> userRepo: requesting user
+deactivate userRepo
+
+sessionMgr -> svc: requesting user
+deactivate sessionMgr
+
+alt Token invalid or user not found
+    svc -> svc: return null (unauthorized)
+else User found
+    svc -> svc: authorize check\n(can view own or admin)
+
+    alt Not own profile and not admin
+        svc -> svc: return null (forbidden)
+    else Authorized
+        svc -> userRepo: findById(userId)
+        activate userRepo
+        userRepo -> db: SELECT * FROM app_users\nWHERE id = ? (eager load profile)
+        db -> userRepo: user with profile
+        deactivate userRepo
+
+        svc -> svc: mapUserToProfileDTO(user)
+        activate svc
+            svc -> profile: enrichProfileDTO(builder, user)
+            activate profile
+            note right of profile
+              Polymorphic call:
+              - AcademicProfile adds academic fields
+              - ProfessionalProfile adds professional fields
+            end note
+            profile -> svc: builder enriched
+            deactivate profile
+            svc -> svc: return ProfileDTO
+        deactivate svc
+    end
+end
+
+svc -> ctrl: ProfileDTO or null
+deactivate svc
+
+alt ProfileDTO found
+    ctrl -> user: 200 OK\n{userId, username, email, role, bio, profile-specific fields}
+else Not found or unauthorized
+    ctrl -> user: 404 Not Found or 403 Forbidden
+end
+deactivate ctrl
+
+== Update Profile Flow ==
+
+user -> ctrl: PUT /profile/{userId}\n(Authorization: Bearer token, UpdateProfileRequest)
+activate ctrl
+
+ctrl -> svc: updateProfile(token, userId, UpdateProfileRequest)
+activate svc
+
+svc -> sessionMgr: getUserFromSessionToken(token)
+activate sessionMgr
+sessionMgr -> userRepo: findById(userId from token)
+sessionMgr -> svc: requesting user
+deactivate sessionMgr
+
+alt Token invalid or user not found
+    svc -> svc: return null (unauthorized)
+else User found
+    svc -> svc: authorize check\n(can only update own profile)
+
+    alt Attempting to update someone else's profile
+        svc -> svc: return null (forbidden)
+    else Own profile
+        svc -> userRepo: findById(userId)
+        activate userRepo
+        userRepo -> db: SELECT * FROM app_users WHERE id = ?
+        db -> userRepo: user with profile
+        deactivate userRepo
+
+        svc -> svc: getProfile from user\nif null return error
+
+        alt Profile exists
+            svc -> profile: applyUpdates(request, user)
+            activate profile
+            note right of profile
+              Polymorphic call:
+              1. Update common fields (bio, description, profilePictureUrl)
+              2. Call profile.applyUpdates() for type-specific fields:
+                 - Student: grades, skills metrics
+                 - Professional: company, job title, expertise
+            end note
+
+            alt Updates valid
+                profile -> svc: profile updated
+                deactivate profile
+
+                svc -> profileRepo: save(profile)
+                activate profileRepo
+                profileRepo -> db: UPDATE user_profiles\nUPDATE academic_profiles/professional_profiles
+                db -> profileRepo: success
+                deactivate profileRepo
+
+                svc -> svc: mapUserToProfileDTO(user)
+                svc -> ctrl: ProfileDTO
+            else Validation failed
+                svc -> ctrl: null (error)
+            end
+        else Profile null
+            svc -> ctrl: null (profile not found)
+        end
+    end
+end
+
+deactivate svc
+
+alt Update successful
+    ctrl -> user: 200 OK\n{updated ProfileDTO}
+else Update failed
+    ctrl -> user: 400 Bad Request or 403 Forbidden
+end
+deactivate ctrl
+
+== List Profiles Flow (Admin Only) ==
+
+user -> ctrl: GET /profile?page=0&size=10\n(Authorization: Bearer token)
+activate ctrl
+
+ctrl -> svc: listProfiles(token, pageable)
+activate svc
+
+svc -> sessionMgr: getUserFromSessionToken(token)
+activate sessionMgr
+sessionMgr -> userRepo: findById(userId from token)
+sessionMgr -> svc: requesting user
+deactivate sessionMgr
+
+alt Token invalid or user not found
+    svc -> svc: return empty page
+else User found
+    svc -> svc: isAdmin(requestingUser.getRole())
+
+    alt Not admin
+        svc -> svc: return empty page (forbidden)
+    else Is admin
+        svc -> userRepo: findAll(pageable)
+        activate userRepo
+        userRepo -> db: SELECT * FROM app_users\nLIMIT 10 OFFSET 0
+        db -> userRepo: page of users
+        deactivate userRepo
+
+        loop For each user in page
+            svc -> svc: mapUserToProfileDTO(user)
+            svc -> profile: enrichProfileDTO(builder, user)
+            profile -> svc: enriched builder
+        end
+
+        svc -> ctrl: Page<ProfileDTO>
+    end
+end
+
+deactivate svc
+
+alt Profiles found and authorized
+    ctrl -> user: 200 OK\n{page of ProfileDTOs}
+else Not authorized or error
+    ctrl -> user: 403 Forbidden or 404 Not Found
+end
+deactivate ctrl
+
+
+@enduml
+
