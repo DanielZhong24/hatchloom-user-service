@@ -9,6 +9,8 @@ import com.hatchloom.user.user_service.repository.UserRepository;
 import com.hatchloom.user.user_service.security.SessionManager;
 import com.hatchloom.user.user_service.security.SessionToken;
 import com.hatchloom.user.user_service.strategy.StrategyFactory;
+import com.hatchloom.user.user_service.strategy.registration.RegistrationStrategyFactory;
+import com.hatchloom.user.user_service.strategy.registration.RoleRegistrationStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,8 +43,16 @@ public class AuthService {
     @Autowired
     private StrategyFactory strategyFactory;
 
+    @Autowired
+    private RegistrationStrategyFactory registrationStrategyFactory;
+
     public RegisterResponse register(RegisterRequest request) {
-        // Check for duplicate email
+        if (!hasValidBaseRegistrationFields(request)) {
+            return RegisterResponse.builder()
+                    .message("Invalid registration request")
+                    .build();
+        }
+
         if (userRepository.existsByEmail(request.getEmail())) {
             log.warn("Registration attempt with existing email: {}", request.getEmail());
             return RegisterResponse.builder()
@@ -52,7 +62,17 @@ public class AuthService {
 
         try {
             RoleType roleType = RoleType.valueOf(request.getRole().toUpperCase());
-            User user = createUserByRole(roleType, request);
+            RoleRegistrationStrategy strategy = registrationStrategyFactory.getStrategy(roleType);
+
+            if (strategy == null || !strategy.isValid(request)) {
+                log.warn("Registration rejected: invalid role payload for role={}", request.getRole());
+                return RegisterResponse.builder()
+                        .message("Invalid registration request")
+                        .build();
+            }
+
+            String passwordHash = passwordEncoder.encode(request.getPassword());
+            User user = strategy.createUser(request, passwordHash);
 
             if (user == null) {
                 return RegisterResponse.builder()
@@ -61,12 +81,9 @@ public class AuthService {
             }
 
             user = userRepository.save(user);
-
-            // Create default profile
             createDefaultProfileForUser(user);
 
             log.info("User registered successfully: {}", user.getUsername());
-
             return RegisterResponse.builder()
                     .userId(user.getId().toString())
                     .username(user.getUsername())
@@ -86,89 +103,29 @@ public class AuthService {
         }
     }
 
-    private User createUserByRole(RoleType roleType, RegisterRequest request) {
-        String passwordHash = passwordEncoder.encode(request.getPassword());
-
-        return switch (roleType) {
-            case STUDENT -> {
-                Student student = new Student();
-                student.setUsername(request.getUsername());
-                student.setEmail(request.getEmail());
-                student.setPasswordHash(passwordHash);
-                student.setRole(roleType);
-                student.setSchoolId(UUID.fromString(request.getSchoolId()));
-                student.setAge(request.getAge());
-                yield student;
-            }
-            case SCHOOL_TEACHER -> {
-                SchoolTeacher teacher = new SchoolTeacher();
-                teacher.setUsername(request.getUsername());
-                teacher.setEmail(request.getEmail());
-                teacher.setPasswordHash(passwordHash);
-                teacher.setRole(roleType);
-                teacher.setSchoolId(UUID.fromString(request.getSchoolId()));
-                yield teacher;
-            }
-            case SCHOOL_ADMIN -> {
-                SchoolAdmin admin = new SchoolAdmin();
-                admin.setUsername(request.getUsername());
-                admin.setEmail(request.getEmail());
-                admin.setPasswordHash(passwordHash);
-                admin.setRole(roleType);
-                admin.setSchoolId(UUID.fromString(request.getSchoolId()));
-                yield admin;
-            }
-            case HATCHLOOM_TEACHER -> {
-                HatchloomTeacher teacher = new HatchloomTeacher();
-                teacher.setUsername(request.getUsername());
-                teacher.setEmail(request.getEmail());
-                teacher.setPasswordHash(passwordHash);
-                teacher.setRole(roleType);
-                yield teacher;
-            }
-            case HATCHLOOM_ADMIN -> {
-                HatchloomAdmin admin = new HatchloomAdmin();
-                admin.setUsername(request.getUsername());
-                admin.setEmail(request.getEmail());
-                admin.setPasswordHash(passwordHash);
-                admin.setRole(roleType);
-                yield admin;
-            }
-            case PARENT -> {
-                Parent parent = new Parent();
-                parent.setUsername(request.getUsername());
-                parent.setEmail(request.getEmail());
-                parent.setPasswordHash(passwordHash);
-                parent.setRole(roleType);
-                yield parent;
-            }
-        };
-    }
-
-    private void createDefaultProfileForUser(User user) {
-        UserProfile profile = null;
-
-        if (user instanceof Student || user instanceof SchoolTeacher) {
-            profile = new AcademicProfile();
-        } else if (user instanceof SchoolAdmin || user instanceof HatchloomAdmin || user instanceof HatchloomTeacher) {
-            profile = new ProfessionalProfile();
-        } else if (user instanceof Parent) {
-            profile = new ProfessionalProfile();
+    private boolean hasValidBaseRegistrationFields(RegisterRequest request) {
+        if (request == null) {
+            log.warn("Registration rejected: request is null");
+            return false;
         }
 
-        if (profile != null) {
-            profile.setUser(user);
-            profile.setBio("Bio");
-            profile.setDescription("Description");
-
-            // Polymorphic initialization: each profile type sets its own defaults
-            // Pass user so profile can determine Student vs Teacher type
-            profile.initializeDefaults(user);
-
-            user.setProfile(profile);
-            userRepository.save(user);
+        if (isBlank(request.getUsername()) || isBlank(request.getEmail()) || isBlank(request.getPassword()) || isBlank(request.getRole())) {
+            log.warn("Registration rejected: missing base fields (username/email/password/role)");
+            return false;
         }
+
+        if (request.getPassword().length() < 5) {
+            log.warn("Registration rejected: password too short for username={}", request.getUsername());
+            return false;
+        }
+
+        return true;
     }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
 
     public LoginResponse login(LoginRequest request) {
         try {
@@ -322,5 +279,25 @@ public class AuthService {
             return false;
         }
     }
-}
 
+    private void createDefaultProfileForUser(User user) {
+        UserProfile profile = null;
+
+        if (user instanceof Student || user instanceof SchoolTeacher) {
+            profile = new AcademicProfile();
+        } else if (user instanceof SchoolAdmin || user instanceof HatchloomAdmin || user instanceof HatchloomTeacher) {
+            profile = new ProfessionalProfile();
+        } else if (user instanceof Parent) {
+            profile = new ProfessionalProfile();
+        }
+
+        if (profile != null) {
+            profile.setUser(user);
+            profile.setBio("Bio");
+            profile.setDescription("Description");
+            profile.initializeDefaults(user);
+            user.setProfile(profile);
+            userRepository.save(user);
+        }
+    }
+}

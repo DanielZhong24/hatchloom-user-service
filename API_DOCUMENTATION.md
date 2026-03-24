@@ -2,52 +2,57 @@
 
 ## Overview
 
-User Service microservice for the Hatchloom platform. Manages polymorphic user types, JWT-based authentication, role-based authorization, user profiles, and parent-child linking.
+User Service microservice for the Hatchloom platform. Provides authentication, role-based authorization, and user profile management for multiple user types (STUDENT, EDUCATOR, ADMIN).
 
 ## Features
 
-- Polymorphic User Model (6 user types)
-- JWT-based Authentication with 30-minute tokens
+- JWT-based Authentication with 30-minute access tokens
 - Refresh Token Mechanism (7-day expiry)
-- Session Management and Validation
-- Strategy-based Role Authorization
-- User Profiles (Academic and Professional)
-- Parent-Child Account Linking
-- Role-based Access Control
+- Role-based Access Control (RBAC)
+- Polymorphic User Profiles (Student, Educator, Admin)
+- User Session Management and Validation
 - PostgreSQL Integration
-- Non-verbose Error Handling (prevents information disclosure)
+- Secure password hashing (bcrypt)
+- Authorization checks on profile access
+- Token validation endpoints
 
 ## Quick Start
 
-Start the service with:
+Start the service with Docker Compose:
 
-```
+```bash
 docker-compose up -d
-mvn spring-boot:run
 ```
 
-The service will be available at http://localhost:8080
+The service will be available at `http://localhost:8080`
+The frontend will be available at `http://localhost:3000`
 
 ## Configuration
 
-Edit src/main/resources/application.properties:
+Edit `src/main/resources/application.properties`:
 
-```
+```properties
 jwt.access-token-expiry-minutes=30
 jwt.refresh-token-expiry-days=7
-jwt.secret=your-secret-key-here
-spring.datasource.url=jdbc:postgresql://postgres:5432/mydatabase
+jwt.secret=your-secret-key-change-this-in-production-at-least-256-bits-long
+spring.datasource.url=jdbc:postgresql://postgres:5432/user_service_db
 spring.datasource.username=myuser
 spring.datasource.password=secret
 ```
 
-## API Endpoints (9 Total)
+---
 
-### Authentication Endpoints
+# API Endpoints
 
-#### POST /auth/register - Register User
+## Authentication Endpoints
 
-Request:
+### 1. Sign Up
+
+**POST** `/auth/register`
+
+**Description:** Create a new user account with specified role.
+
+**Request:
 ```json
 {
   "username": "john_doe",
@@ -1085,8 +1090,6 @@ Response (201 Created):
   "message": "Registration successful"
 }
 ```
-
-Note: HATCHLOOM_ADMIN has unrestricted access, no schoolId required.
 
 #### Step 2: Login as Hatchloom Admin
 

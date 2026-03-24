@@ -55,13 +55,13 @@ services:
     build: ./frontend
     container_name: user-service-frontend
     ports:
-      - '3000:3000'
+      - '3000:80'
     depends_on:
       - user-service
     environment:
       - REACT_APP_API_BASE_URL=/api
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000"]
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:80/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -69,4 +69,3 @@ services:
 
 volumes:
   postgres_data:
-
