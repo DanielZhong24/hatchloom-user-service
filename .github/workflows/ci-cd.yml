@@ -11,6 +11,11 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# Prevent overlapping runs on the same ref from racing on the same cache scope.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Job 1: Test on every push (all branches)
   test:
@@ -85,15 +90,30 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (attempt 1)
+        id: build_push_attempt_1
+        continue-on-error: true
         uses: docker/build-push-action@v5
         with:
           context: .
+          pull: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:buildcache,mode=max
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,scope=${{ github.ref_name }},mode=max
+
+      - name: Build and push Docker image (retry once on transient failure)
+        if: steps.build_push_attempt_1.outcome == 'failure'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          pull: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,scope=${{ github.ref_name }},mode=max
 
   # Job 3: Code quality analysis
   code-quality:
