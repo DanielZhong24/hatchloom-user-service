@@ -53,6 +53,9 @@ class AuthServiceTest {
     @Mock
     private StrategyFactory strategyFactory;
 
+    @Mock
+    private com.hatchloom.user.user_service.strategy.registration.RegistrationStrategyFactory registrationStrategyFactory;
+
     @InjectMocks
     private AuthService authService;
 
@@ -68,6 +71,28 @@ class AuthServiceTest {
         testStudentId = UUID.randomUUID();
         testEmail = "test@example.com";
         testUsername = "testuser";
+
+        // Setup registration strategies for each role
+        com.hatchloom.user.user_service.strategy.registration.StudentRegistrationStrategy studentStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.StudentRegistrationStrategy();
+        com.hatchloom.user.user_service.strategy.registration.ParentRegistrationStrategy parentStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.ParentRegistrationStrategy();
+        com.hatchloom.user.user_service.strategy.registration.SchoolTeacherRegistrationStrategy teacherStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.SchoolTeacherRegistrationStrategy();
+        com.hatchloom.user.user_service.strategy.registration.SchoolAdminRegistrationStrategy adminStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.SchoolAdminRegistrationStrategy();
+        com.hatchloom.user.user_service.strategy.registration.HatchloomTeacherRegistrationStrategy hatchloomTeacherStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.HatchloomTeacherRegistrationStrategy();
+        com.hatchloom.user.user_service.strategy.registration.HatchloomAdminRegistrationStrategy hatchloomAdminStrategy =
+                new com.hatchloom.user.user_service.strategy.registration.HatchloomAdminRegistrationStrategy();
+
+        // Wire up strategies for each role type
+        when(registrationStrategyFactory.getStrategy(RoleType.STUDENT)).thenReturn(studentStrategy);
+        when(registrationStrategyFactory.getStrategy(RoleType.PARENT)).thenReturn(parentStrategy);
+        when(registrationStrategyFactory.getStrategy(RoleType.SCHOOL_TEACHER)).thenReturn(teacherStrategy);
+        when(registrationStrategyFactory.getStrategy(RoleType.SCHOOL_ADMIN)).thenReturn(adminStrategy);
+        when(registrationStrategyFactory.getStrategy(RoleType.HATCHLOOM_TEACHER)).thenReturn(hatchloomTeacherStrategy);
+        when(registrationStrategyFactory.getStrategy(RoleType.HATCHLOOM_ADMIN)).thenReturn(hatchloomAdminStrategy);
     }
 
     @Test
