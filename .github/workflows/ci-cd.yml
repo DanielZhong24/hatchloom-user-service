@@ -1,11 +1,11 @@
 name: CI/CD Pipeline
 
-# Trigger on push to any branch and pull requests to main
+# Trigger on push to any branch and pull requests to main/develop
 on:
   push:
-    branches: [ main, develop, '**' ]
+    branches: [ main, master, develop, '**' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
 
 env:
   REGISTRY: ghcr.io
@@ -39,16 +39,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-${{ matrix.java-version }}
+          name: test-reports
           path: target/surefire-reports/
           retention-days: 30
 
-  # Job 2: Build Docker image and push on merge to main/develop
+  # Job 2: Build Docker image and push on push to main/master/develop after tests pass
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: ${{ github.event_name == 'push' && contains(fromJSON('["main","master","develop"]'), github.ref_name) && needs.test.result == 'success' }}
 
     permissions:
       contents: read
@@ -92,15 +92,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:buildcache,mode=max
 
   # Job 3: Code quality analysis
   code-quality:
     name: Code Quality Analysis
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
       - name: Checkout code
