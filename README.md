@@ -16,6 +16,11 @@ mvn spring-boot:run
 
 The service will be available at http://localhost:8080
 The front end will be available at http://localhost:3000
+
+## To run test cases
+
+run `mvn test` to execute all test cases.
+
 ## Documentation
 
 See [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for complete API reference and usage examples.
